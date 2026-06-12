@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌦️ Weather Discovery</title>
+
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:Arial, Helvetica, sans-serif;
+}
+
+body{
+    min-height:100vh;
+    background:linear-gradient(135deg,#26375e,#7186aa,#90a8ca);
+    color:white;
+    padding:20px;
+}
+
+.container{
+    max-width:800px;
+    margin:auto;
+}
+
+h1{
+    text-align:center;
+    margin-bottom:10px;
+}
+
+.subtitle{
+    text-align:center;
+    opacity:0.9;
+    margin-bottom:25px;
+}
+
+.search-box{
+    display:flex;
+    gap:10px;
+    margin-bottom:20px;
+}
+
+input{
+    flex:1;
+    padding:14px;
+    border:none;
+    border-radius:10px;
+    font-size:16px;
+}
+
+button{
+    border:none;
+    padding:14px 20px;
+    border-radius:10px;
+    cursor:pointer;
+    font-size:16px;
+    font-weight:bold;
+    background:#72b1cc;
+    color:#1a294b;
+    transition:0.3s;
+}
+
+button:hover{
+    transform:translateY(-2px);
+}
+
+.card{
+    background:rgba(255,255,255,0.08);
+    backdrop-filter:blur(10px);
+    border-radius:16px;
+    padding:20px;
+    margin-bottom:20px;
+}
+
+.current-temp{
+    font-size:2.5rem;
+    margin:15px 0;
+    font-weight:bold;
+}
+
+.forecast{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+    gap:12px;
+    margin-top:15px;
+}
+
+.hourly{
+    display:flex;
+    gap:10px;
+    overflow-x:auto;
+    padding-bottom:10px;
+}
+
+.hour{
+    min-width:100px;
+    background:rgba(255,255,255,0.08);
+    border-radius:12px;
+    padding:10px;
+    text-align:center;
+    flex-shrink:0;
+    transition:0.3s;
+}
+
+.hour:hover{
+    transform:translateY(-3px);
+}
+
+.day{
+    background:rgba(255,255,255,0.08);
+    border-radius:12px;
+    padding:12px;
+    text-align:center;
+    transition:0.3s;
+}
+
+.day:hover{
+    transform:translateY(-5px);
+}
+
+.weather-emoji{
+    font-size:2rem;
+    margin-bottom:8px;
+}
+
+.loading{
+    text-align:center;
+    font-size:1.2rem;
+    margin-top:20px;
+}
+
+.spinner{
+    width:40px;
+    height:40px;
+    border:4px solid rgba(255,255,255,0.3);
+    border-top:4px solid white;
+    border-radius:50%;
+    animation:spin 1s linear infinite;
+    margin:0 auto 15px;
+}
+
+@keyframes spin{
+    100%{ transform:rotate(360deg); }
+}
+
+.error{
+    background:#6d1c1c;
+    color:#e99c9c;
+    padding:15px;
+    border-radius:12px;
+    margin-top:15px;
+}
+
+.hidden{ display:none; }
+
+.city-date{
+    margin-top:8px;
+    opacity:0.85;
+    font-size:0.95rem;
+}
+
+.footer{
+    text-align:center;
+    margin-top:25px;
+    opacity:0.8;
+}
+
+@media(max-width:600px){
+    .search-box{
+        flex-direction:column;
+    }
+    button{ width:100%; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>🌍 Weather Discovery</h1>
+    <p class="subtitle">Discover weather's all around the world ✈️</p>
+
+    <div class="search-box">
+        <input id="cityInput" placeholder="🌍 Enter a city (e.g. Dubai)">
+        <button onclick="getWeather()">🔎 Search</button>
+    </div>
+
+    <div id="loading" class="loading hidden">
+        <div class="spinner"></div>
+        Analyzing the weather forecast...
+    </div>
+
+    <div id="error" class="error hidden"></div>
+
+    <div id="result" class="card hidden">
+
+        <h2 id="cityName"></h2>
+
+        <div id="currentWeather"></div>
+
+        <h3>⏰ Hourly WeatherForecast (Next 24 Hours)</h3>
+        <div id="hourly" class="hourly"></div>
+
+        <h3 style="margin-top:15px;">📅 5-Day Forecast</h3>
+        <div id="forecast" class="forecast"></div>
+
+    </div>
+
+    <div class="footer">
+         Powered by Open-Meteo API
+    </div>
+
+</div>
+
+<script>
+
+const cityInput = document.getElementById("cityInput");
+const loading = document.getElementById("loading");
+const errorBox = document.getElementById("error");
+const result = document.getElementById("result");
+
+const API = {
+    geo: "https://geocoding-api.open-meteo.com/v1/search",
+    forecast: "https://api.open-meteo.com/v1/forecast"
+};
+
+function getWeatherEmoji(temp){
+    if(temp >= 35) return "🔥";
+    if(temp >= 25) return "☀️";
+    if(temp >= 15) return "🌤️";
+    if(temp >= 5) return "🌥️";
+    return "❄️";
+}
+
+// FIXED FLAG FUNCTION
+function getFlag(code){
+    if(!code) return "";
+    code = code.slice(0,2).toUpperCase();
+
+    return code.replace(/./g, char =>
+        String.fromCodePoint(127397 + char.charCodeAt())
+    );
+}
+
+async function fetchData(url){
+    try{
+        const res = await fetch(url);
+        const data = await res.json();
+        return { data, error:null };
+    }catch(e){
+        return { data:null, error:e.message };
+    }
+}
+
+async function getWeather(){
+
+    const city = cityInput.value.trim();
+
+    errorBox.classList.add("hidden");
+    result.classList.add("hidden");
+
+    if(!city){
+        showError("🧐 Please enter a city name.");
+        return;
+    }
+
+    loading.classList.remove("hidden");
+
+    const geo = await fetchData(`${API.geo}?name=${city}&count=1`);
+
+    if(!geo.data?.results){
+        loading.classList.add("hidden");
+        showError("❌ City not found.");
+        return;
+    }
+
+    const location = geo.data.results[0];
+
+    const weather = await fetchData(
+        `${API.forecast}?latitude=${location.latitude}&longitude=${location.longitude}&current_weather=true&hourly=temperature_2m&daily=temperature_2m_max,temperature_2m_min&timezone=auto`
+    );
+
+    loading.classList.add("hidden");
+
+    const payload = {
+        city: location.name,
+        country: location.country,
+        country_code: location.country_code,
+        current: weather.data.current_weather,
+        hourly: weather.data.hourly,
+        daily: weather.data.daily
+    };
+
+    render(payload);
+}
+
+function render(data){
+
+    const format = new Intl.NumberFormat(undefined,{maximumFractionDigits:0});
+    const dateFormat = new Intl.DateTimeFormat(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+    const forecastFormat = new Intl.DateTimeFormat(undefined,{weekday:"short",month:"short",day:"numeric"});
+
+    document.getElementById("cityName").innerHTML =
+        `📍 ${data.city}, ${getFlag(data.country_code)} ${data.country}
+        <div class="city-date">📅 ${dateFormat.format(new Date())}</div>`;
+
+    document.getElementById("currentWeather").innerHTML =
+        `<div class="current-temp">
+            ${getWeatherEmoji(data.current.temperature)}
+            ${format.format(data.current.temperature)}°C
+        </div>
+        <p>💨 Wind: ${format.format(data.current.windspeed)} km/h</p>`;
+
+    // ⏰ HOURLY
+    const hourlyContainer = document.getElementById("hourly");
+    hourlyContainer.innerHTML = "";
+
+    for(let i=0;i<24;i++){
+
+        const time = new Date(data.hourly.time[i]);
+        const temp = data.hourly.temperature_2m[i];
+
+        const div = document.createElement("div");
+        div.className = "hour";
+
+        div.innerHTML = `
+            <div>${time.toLocaleTimeString([], {
+                hour: 'numeric',
+                hour12: true
+            })}</div>
+
+            <div style="font-size:1.5rem;">
+                ${getWeatherEmoji(temp)}
+            </div>
+
+            <div>${format.format(temp)}°</div>
+        `;
+
+        hourlyContainer.appendChild(div);
+    }
+
+    // 📅 DAILY
+    const forecast = document.getElementById("forecast");
+    forecast.innerHTML = "";
+
+    for(let i=0;i<5;i++){
+        const max = data.daily.temperature_2m_max[i];
+        const min = data.daily.temperature_2m_min[i];
+        const avg = (max + min)/2;
+
+        const card = document.createElement("div");
+        card.className = "day";
+
+        card.innerHTML = `
+            <div class="weather-emoji">${getWeatherEmoji(avg)}</div>
+            <strong>${forecastFormat.format(new Date(data.daily.time[i]))}</strong>
+            <hr style="margin:8px 0; opacity:.3;">
+            <p>🌡️ ${format.format(max)}° / ${format.format(min)}°</p>
+        `;
+
+        forecast.appendChild(card);
+    }
+
+    result.classList.remove("hidden");
+}
+
+function showError(msg){
+    errorBox.textContent = msg;
+    errorBox.classList.remove("hidden");
+}
+
+cityInput.addEventListener("keydown",e=>{
+    if(e.key==="Enter") getWeather();
+});
+
+</script>
+
+</body>
+</html>

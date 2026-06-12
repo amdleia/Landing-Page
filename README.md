@@ -15,6 +15,7 @@ JavaScript
 Open-Meteo API
  
 Highlights
+
 UI design
 Fast API-based data loading
 Lightweight and beginner-friendly project
